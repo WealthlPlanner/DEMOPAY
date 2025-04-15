@@ -1,96 +1,71 @@
+from flask import Flask, request, render_template_string
+
+app = Flask(__name__)
+users = {}
+
 class User:
     def __init__(self, username):
         self.username = username
         self.balance = 0.0
 
     def add_balance(self, amount):
-        if amount <= 0:
-            return "Amount must be positive."
         self.balance += amount
-        return f"${amount:.2f} added. New balance: ${self.balance:.2f}"
 
     def make_payment(self, amount, recipient):
-        if amount <= 0:
-            return "Payment amount must be positive."
         if self.balance < amount:
-            return "Insufficient funds."
+            return False
         self.balance -= amount
         recipient.balance += amount
-        return f"Payment of ${amount:.2f} sent to {recipient.username}. New balance: ${self.balance:.2f}"
+        return True
 
     def check_balance(self):
-        return f"{self.username}'s balance: ${self.balance:.2f}"
+        return self.balance
 
+@app.route("/", methods=["GET", "POST"])
+def home():
+    message = ""
+    if request.method == "POST":
+        username = request.form.get("username")
+        action = request.form.get("action")
+        amount = request.form.get("amount", type=float)
+        recipient = request.form.get("recipient")
 
-# --- Main System Logic ---
-users = {}
-
-def register_user(username):
-    if username in users:
-        return "Username already exists."
-    users[username] = User(username)
-    return f"User '{username}' registered successfully."
-
-def find_user(username):
-    return users.get(username, None)
-
-def main():
-    print("Welcome to SimplePay!\n")
-
-    while True:
-        print("\nOptions:")
-        print("1. Register")
-        print("2. Add Balance")
-        print("3. Make Payment")
-        print("4. Check Balance")
-        print("5. Exit")
-
-        choice = input("Choose an option: ").strip()
-
-        if choice == "1":
-            name = input("Enter username to register: ").strip()
-            print(register_user(name))
-
-        elif choice == "2":
-            name = input("Username: ").strip()
-            user = find_user(name)
-            if user:
-                try:
-                    amt = float(input("Amount to add: "))
-                    print(user.add_balance(amt))
-                except ValueError:
-                    print("Invalid amount.")
+        if action == "register":
+            if username in users:
+                message = "User already exists!"
             else:
-                print("User not found.")
-
-        elif choice == "3":
-            sender_name = input("Sender username: ").strip()
-            recipient_name = input("Recipient username: ").strip()
-            try:
-                amount = float(input("Amount to send: "))
-                sender = find_user(sender_name)
-                recipient = find_user(recipient_name)
-
-                if not sender or not recipient:
-                    print("Sender or recipient not found.")
-                else:
-                    print(sender.make_payment(amount, recipient))
-            except ValueError:
-                print("Invalid amount.")
-
-        elif choice == "4":
-            name = input("Username: ").strip()
-            user = find_user(name)
-            if user:
-                print(user.check_balance())
-            else:
-                print("User not found.")
-
-        elif choice == "5":
-            print("Thanks for using SimplePay. Goodbye!")
-            break
+                users[username] = User(username)
+                message = f"User '{username}' registered."
+        elif username not in users:
+            message = "User not found."
         else:
-            print("Invalid option. Try again.")
+            user = users[username]
+            if action == "add":
+                user.add_balance(amount)
+                message = f"${amount:.2f} added. New balance: ${user.balance:.2f}"
+            elif action == "pay":
+                if recipient not in users:
+                    message = "Recipient not found."
+                elif user.make_payment(amount, users[recipient]):
+                    message = f"Paid ${amount:.2f} to {recipient}."
+                else:
+                    message = "Insufficient funds."
+            elif action == "check":
+                message = f"{username}'s balance: ${user.check_balance():.2f}"
+
+    return render_template_string("""
+        <h2>SimplePay Web</h2>
+        <form method="post">
+            <input name="username" placeholder="Your username"><br>
+            <input name="amount" placeholder="Amount (if needed)" type="number" step="0.01"><br>
+            <input name="recipient" placeholder="Recipient (for payments)"><br>
+            <button name="action" value="register">Register</button>
+            <button name="action" value="add">Add Balance</button>
+            <button name="action" value="pay">Make Payment</button>
+            <button name="action" value="check">Check Balance</button>
+        </form>
+        <p>{{ message }}</p>
+    """, message=message)
 
 if __name__ == "__main__":
-    main()
+    app.run(debug=True)
